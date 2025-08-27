@@ -1,62 +1,224 @@
 <!doctype html>
-<meta charset="utf-8">
-<title>Realtime Voice MVP</title>
-<style>
-  :root { color-scheme: dark; }
-  body { margin:0; font:16px/1.5 system-ui,Segoe UI,Roboto,Arial; background:#0f1115; color:#e9eef5; display:grid; place-items:center; min-height:100vh; }
-  .card { width:min(900px, 92vw); background:#121826; border:1px solid #243; border-radius:14px; padding:24px; }
-  h1 { margin:0 0 8px; } p { opacity:.85; margin:.3rem 0 1rem; }
-  button { padding:12px 16px; border:1px solid #2a3244; background:#1a2030; color:#e9eef5; border-radius:8px; cursor:pointer; }
-  #status { margin-left:10px; opacity:.8 }
-  audio { width:100%; margin-top:12px; }
-</style>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <!-- WICHTIG für Mobile -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1115">
+  <title>Realtime Voice MVP</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1115;
+      --panel: #121826;
+      --border: #243;
+      --text: #e9eef5;
+      --muted: #9aa4b2;
+      --accent: #2d72fe;
+      --accent-2: #1a2030;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --error: #ef4444;
+      --radius: 16px;
+      --gap: 14px;
+      --font-base: 17px; /* größer für Mobile */
+    }
 
-<div class="card">
-  <h1>Realtime Voice (WebRTC)</h1>
-  <p>Auf „Start“ klicken, Mikro erlauben, sprechen – der Assistent spricht live zurück.</p>
-  <button id="start">🎤 Start Voice Chat</button><span id="status">bereit</span>
-  <audio id="remote" controls></audio>
-</div>
+    /* Base */
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font: var(--font-base)/1.5 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: var(--bg);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
 
-<script>
-const startBtn = document.getElementById('start');
-const statusEl = document.getElementById('status');
-const remoteAudio = document.getElementById('remote');
-function setStatus(t){ statusEl.textContent = t; }
+    /* Card/Layout */
+    .wrap {
+      width: min(720px, 100%);
+      padding: 20px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: clamp(16px, 4vw, 24px);
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: clamp(18px, 4.8vw, 22px);
+    }
+    p.sub {
+      margin: 0 0 16px 0;
+      color: var(--muted);
+      font-size: clamp(14px, 3.8vw, 16px);
+    }
 
-startBtn.onclick = async () => {
-  startBtn.disabled = true;
-  setStatus("verbinde …");
-  try {
-    const sess = await fetch("/session", { method:"POST" }).then(r => r.json());
-    const EPHEMERAL = sess?.client_secret?.value;
-    if (!EPHEMERAL) throw new Error("Kein ephemeres Token erhalten");
+    /* Controls */
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: var(--gap);
+      margin: 8px 0 12px;
+    }
+    .btn {
+      width: 100%;
+      appearance: none;
+      border: 1px solid #2a3244;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 14px;
+      padding: 14px 18px;
+      font-weight: 700;
+      font-size: clamp(16px, 4.6vw, 18px);
+      cursor: pointer;
+      transition: transform .05s ease, filter .15s ease;
+      touch-action: manipulation;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn[disabled] {
+      filter: saturate(.5) brightness(.85);
+      cursor: not-allowed;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      background: var(--accent-2);
+      border-radius: 12px;
+      font-size: clamp(14px, 3.8vw, 16px);
+      color: var(--muted);
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+    .dot.ok { background: var(--ok); }
+    .dot.warn { background: var(--warn); }
+    .dot.err { background: var(--error); }
 
-    const pc = new RTCPeerConnection();
-    pc.ontrack = (ev) => { remoteAudio.srcObject = ev.streams[0]; remoteAudio.play().catch(()=>{}); };
-    const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-    pc.addTrack(mic.getTracks()[0], mic);
-    pc.addTransceiver("audio", { direction: "recvonly" });
-    const dc = pc.createDataChannel("oai-events");
-    dc.onmessage = (e) => console.log("Event:", e.data);
+    /* Audio */
+    audio {
+      width: 100%;
+      margin-top: 10px;
+      background: #0b0f1a;
+      border-radius: 12px;
+      outline: none;
+    }
+    /* weniger UI-Ballast */
+    audio::-webkit-media-controls-fullscreen-button,
+    audio::-webkit-media-controls-mute-button {
+      display: none !important;
+    }
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+    /* Footer-Hinweis */
+    .hint {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: clamp(12px, 3.4vw, 14px);
+    }
 
-    const r = await fetch("https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${EPHEMERAL}`, "Content-Type": "application/sdp" },
-      body: offer.sdp
-    });
-    if (!r.ok) throw new Error(await r.text());
-    const answer = { type: "answer", sdp: await r.text() };
-    await pc.setRemoteDescription(answer);
-    setStatus("verbunden – bitte sprechen 🎙️");
-  } catch (e) {
-    console.error(e);
-    alert("Start fehlgeschlagen: " + e.message);
-    startBtn.disabled = false;
-    setStatus("Fehler");
-  }
-};
-</script>
+    /* Größere Bildschirme: etwas breiter */
+    @media (min-width: 720px) {
+      .controls { grid-template-columns: 1fr 1fr; }
+      .status { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+      <h1>Realtime Voice (WebRTC)</h1>
+      <p class="sub">Tippe auf Start, erlaube das Mikrofon und sprich – der Assistent antwortet mit Stimme.</p>
+
+      <div class="controls">
+        <button id="start" class="btn">🎤 Voice-Chat starten</button>
+        <div id="status" class="status"><span class="dot"></span><span>bereit</span></div>
+      </div>
+
+      <!-- iOS/Android: playsinline vermeidet Vollbild-Videoverhalten -->
+      <audio id="remote" playsinline controls></audio>
+
+      <p class="hint">Tipp: Chrome/Edge sind am stabilsten. Falls kein Ton: erst „Start“ tippen, dann Lautstärke prüfen.</p>
+    </section>
+  </main>
+
+  <script>
+    const startBtn   = document.getElementById('start');
+    const statusBox  = document.getElementById('status');
+    const dot        = statusBox.querySelector('.dot');
+    const statusText = statusBox.querySelector('span:last-child');
+    const remoteAudio= document.getElementById('remote');
+
+    function setStatus(type, text){
+      dot.className = 'dot ' + (type || '');
+      statusText.textContent = text || '';
+    }
+
+    async function startVoice(){
+      startBtn.disabled = true;
+      setStatus('', 'verbinde …');
+      try {
+        // 1) Ephemeres Token holen
+        const sess = await fetch('/session', { method:'POST' }).then(r => r.json());
+        const EPHEMERAL = sess?.client_secret?.value;
+        if (!EPHEMERAL) throw new Error('Kein ephemeres Token erhalten');
+
+        // 2) WebRTC vorbereiten
+        const pc = new RTCPeerConnection();
+
+        // Eingehendes (Remote-)Audio abspielen
+        pc.ontrack = (ev) => {
+          remoteAudio.srcObject = ev.streams[0];
+          // Auf iOS erst nach User-Gesture erlaubt → wir sind im Klick-Handler, also okay.
+          remoteAudio.play().catch(()=>{});
+        };
+
+        // Mikrofon streamen
+        const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+        pc.addTrack(mic.getTracks()[0], mic);
+
+        // Audio vom Modell empfangen
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+
+        // Optional: DataChannel (Text-Events/Debug)
+        const dc = pc.createDataChannel('oai-events');
+        dc.onmessage = (e) => console.log('Event:', e.data);
+
+        // 3) Offer erzeugen
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        // 4) An Realtime-Endpoint schicken
+        const r = await fetch('https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${EPHEMERAL}`,
+            'Content-Type': 'application/sdp'
+          },
+          body: offer.sdp
+        });
+
+        if (!r.ok) throw new Error(await r.text());
+        const answer = { type: 'answer', sdp: await r.text() };
+        await pc.setRemoteDescription(answer);
+
+        setStatus('ok', 'verbunden – sprich gern los 🎙️');
+
+      } catch (err) {
+        console.error(err);
+        setStatus('err', 'Fehler: ' + (err?.message || err));
+        startBtn.disabled = false;
+        alert('Start fehlgeschlagen: ' + (err?.message || err));
+      }
+    }
+
+    // Größere Touch-Targets: Starte aus dem Click-Handler
+    startBtn.addEventListener('click', startVoice, { passive: true });
+  </script>
+</body>
+</html>
