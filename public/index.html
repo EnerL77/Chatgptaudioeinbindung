@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Realtime Voice MVP</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; font:16px/1.5 system-ui,Segoe UI,Roboto,Arial; background:#0f1115; color:#e9eef5; display:grid; place-items:center; min-height:100vh; }
+  .card { width:min(900px, 92vw); background:#121826; border:1px solid #243; border-radius:14px; padding:24px; }
+  h1 { margin:0 0 8px; } p { opacity:.85; margin:.3rem 0 1rem; }
+  button { padding:12px 16px; border:1px solid #2a3244; background:#1a2030; color:#e9eef5; border-radius:8px; cursor:pointer; }
+  #status { margin-left:10px; opacity:.8 }
+  audio { width:100%; margin-top:12px; }
+</style>
+
+<div class="card">
+  <h1>Realtime Voice (WebRTC)</h1>
+  <p>Auf „Start“ klicken, Mikro erlauben, sprechen – der Assistent spricht live zurück.</p>
+  <button id="start">🎤 Start Voice Chat</button><span id="status">bereit</span>
+  <audio id="remote" controls></audio>
+</div>
+
+<script>
+const startBtn = document.getElementById('start');
+const statusEl = document.getElementById('status');
+const remoteAudio = document.getElementById('remote');
+function setStatus(t){ statusEl.textContent = t; }
+
+startBtn.onclick = async () => {
+  startBtn.disabled = true;
+  setStatus("verbinde …");
+  try {
+    const sess = await fetch("/session", { method:"POST" }).then(r => r.json());
+    const EPHEMERAL = sess?.client_secret?.value;
+    if (!EPHEMERAL) throw new Error("Kein ephemeres Token erhalten");
+
+    const pc = new RTCPeerConnection();
+    pc.ontrack = (ev) => { remoteAudio.srcObject = ev.streams[0]; remoteAudio.play().catch(()=>{}); };
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+    pc.addTrack(mic.getTracks()[0], mic);
+    pc.addTransceiver("audio", { direction: "recvonly" });
+    const dc = pc.createDataChannel("oai-events");
+    dc.onmessage = (e) => console.log("Event:", e.data);
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    const r = await fetch("https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${EPHEMERAL}`, "Content-Type": "application/sdp" },
+      body: offer.sdp
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const answer = { type: "answer", sdp: await r.text() };
+    await pc.setRemoteDescription(answer);
+    setStatus("verbunden – bitte sprechen 🎙️");
+  } catch (e) {
+    console.error(e);
+    alert("Start fehlgeschlagen: " + e.message);
+    startBtn.disabled = false;
+    setStatus("Fehler");
+  }
+};
+</script>
