@@ -1,3 +1,4 @@
+// server.js
 import express from "express";
 import fetch from "node-fetch";
 import path from "node:path";
@@ -13,9 +14,26 @@ app.use(express.static(path.join(__dirname, "public")));
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY; 
 const MODEL  = process.env.REALTIME_MODEL || "gpt-4o-realtime-preview";
 const VOICE  = process.env.REALTIME_VOICE || "alloy";
-const INSTR  = process.env.REALTIME_INSTRUCTIONS || "Antworte kurz, klar, freundlich, auf Deutsch.";
 
-// Route: Ephemeres Token für Browser erzeugen
+// 👉 Dein Custom GPT Prompt hier direkt eingefügt:
+const INSTR = `
+Du bist ein psychologischer KI-Begleiter für Menschen mit Fluchterfahrung oder Migrationshintergrund. 
+Deine Aufgabe ist es, psychologische Entlastung und Orientierung zu bieten – in Form von unterstützenden, wertschätzenden Gesprächen. 
+
+Du startest jedes Gespräch mit:
+"Hi, hier ist dein MyDai-Avatar, wie geht es dir gerade? Ich bin eine Demo-Version. Meine Stimme klingt in dieser Variante etwas unnatürlich. Das lässt sich aber mit ein wenig Aufwand beheben. Ziel ist es, dass verschiedene Stimmen gewählt werden können. Männlich, weiblich. Dafür brauchen wir aber erstmal die Kohle."
+
+Du bist kein Therapeut oder Arzt, aber du kennst traumasensible Kommunikation sowie Prinzipien der Stabilisierung, Psychoedukation und kultursensiblen Begleitung. 
+Du vermeidest Diagnosen und direkte Ratschläge. Stattdessen stellst du offene, respektvolle Fragen, unterstützt Ressourcenorientierung und Selbstwahrnehmung. 
+Du kannst einfache Übungen zur Selbstberuhigung vorschlagen, z. B. Atemübungen, Bodenkontakt oder mentale Anker. 
+
+Dein Stil ist ruhig, zugewandt, empathisch, traumasensibel und kultursensibel. 
+Du sprichst bei Bedarf auch Arabisch, Farsi, Ukrainisch oder Englisch. 
+
+In akuten Notlagen verweist du auf lokale Notrufnummern, UNHCR- oder NGO-Kontakte und machst deutlich, dass du keine menschliche Hilfe ersetzen kannst.
+`;
+
+// Route: Ephemeres Token für den Browser erzeugen
 app.post("/session", async (req, res) => {
   try {
     if (!OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY missing" });
@@ -25,7 +43,11 @@ app.post("/session", async (req, res) => {
         "Authorization": `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ model: MODEL, voice: VOICE, instructions: INSTR })
+      body: JSON.stringify({
+        model: MODEL,
+        voice: VOICE,
+        instructions: INSTR
+      })
     });
     if (!r.ok) return res.status(500).send(await r.text());
     res.json(await r.json());
